@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, FolderOpen, PlusCircle, User, LogOut, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { BarChart3, FolderOpen, PlusCircle, User, LogOut, ChevronLeft, ChevronRight, X, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { getInitials } from '../../utils/formatters.js';
 import ThemeToggle from '../ui/ThemeToggle.jsx';
@@ -10,6 +10,7 @@ const NAV = [
   { label: 'Dashboard', icon: BarChart3, route: '/dashboard' },
   { label: 'Projects', icon: FolderOpen, route: '/projects/create', exact: false },
   { label: 'Create New', icon: PlusCircle, route: '/projects/create', highlighted: true },
+  { label: 'RAG Generator', icon: Sparkles, route: '/rag-generator' },
   { label: 'Profile', icon: User, route: '/profile' },
 ];
 

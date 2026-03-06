@@ -19,6 +19,7 @@ const VideoDetail = lazy(() => import('./pages/VideoDetail.jsx'));
 const VideoEditor = lazy(() => import('./pages/VideoEditor.jsx'));
 const SceneEditor = lazy(() => import('./pages/SceneEditor.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
+const RAGVideoGenerator = lazy(() => import('./pages/RAGVideoGenerator.jsx'));
 const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 
 
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/editor/:id" element={<ProtectedRoute><VideoEditor /></ProtectedRoute>} />
             <Route path="/scenes/:id" element={<ProtectedRoute><SceneEditor /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/rag-generator" element={<ProtectedRoute><RAGVideoGenerator /></ProtectedRoute>} />
 
             {/* 404 */}
             <Route path="*" element={<NotFound />} />

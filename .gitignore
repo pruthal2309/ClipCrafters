@@ -69,6 +69,7 @@ web_modules/
 .env
 .env.*
 !.env.example
+!.env.sample
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -137,3 +138,61 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# FastAPI / Storage directories
+fastapi/app/storage/uploads/*
+fastapi/app/storage/indices/*
+fastapi/app/storage/parsed/*
+fastapi/app/storage/scripts/*
+fastapi/app/storage/projects/*
+!fastapi/app/storage/uploads/.gitkeep
+!fastapi/app/storage/indices/.gitkeep
+!fastapi/app/storage/parsed/.gitkeep
+!fastapi/app/storage/scripts/.gitkeep
+!fastapi/app/storage/projects/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
