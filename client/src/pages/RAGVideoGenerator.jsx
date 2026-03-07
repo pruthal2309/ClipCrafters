@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Upload, FileText, Database, Sparkles, Trash2, Download, Play, Film, Wand2, Eye, Save, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -191,8 +191,13 @@ export default function RAGVideoGenerator() {
     try {
       updateSceneInState(sceneId, { audio_status: 'generating' });
       await axios.post(`${API_URL}/scenes/${sceneId}/generate-audio?project_id=${currentDocId}`);
-      updateSceneInState(sceneId, { audio_status: 'ready' });
-      toast.success('Audio generated!');
+      updateSceneInState(sceneId, { audio_status: 'ready', clip_status: 'outdated' });
+      if (finalVideo) {
+        setShowFastRebuild(true);
+        toast.info('Scene updated! Render clip and update video to see changes.');
+      } else {
+        toast.success('Audio generated!');
+      }
     } catch (err) {
       toast.error(`Audio generation failed: ${err.message}`);
       updateSceneInState(sceneId, { audio_status: 'error' });
@@ -206,8 +211,13 @@ export default function RAGVideoGenerator() {
         image_style: imageStyle,
         custom_prompt: customPrompt
       });
-      updateSceneInState(sceneId, { image_status: 'ready' });
-      toast.success('Image generated!');
+      updateSceneInState(sceneId, { image_status: 'ready', clip_status: 'outdated' });
+      if (finalVideo) {
+        setShowFastRebuild(true);
+        toast.info('Scene updated! Render clip and update video to see changes.');
+      } else {
+        toast.success('Image generated!');
+      }
     } catch (err) {
       toast.error(`Image generation failed: ${err.message}`);
       updateSceneInState(sceneId, { image_status: 'error' });
@@ -220,7 +230,11 @@ export default function RAGVideoGenerator() {
       await axios.post(`${API_URL}/scenes/${sceneId}/generate-clip?project_id=${currentDocId}`);
       updateSceneInState(sceneId, { clip_status: 'ready' });
       setShowFastRebuild(true);
-      toast.success('Clip rendered!');
+      if (finalVideo) {
+        toast.success('Clip rendered! Click "Update Video" to rebuild the final video.');
+      } else {
+        toast.success('Clip rendered!');
+      }
     } catch (err) {
       toast.error(`Clip rendering failed: ${err.message}`);
       updateSceneInState(sceneId, { clip_status: 'error' });
@@ -239,6 +253,93 @@ export default function RAGVideoGenerator() {
     } catch (err) {
       toast.error(`Assembly failed: ${err.response?.data?.detail || err.message}`);
       setStoryboardStatus({ loading: false, text: '' });
+    }
+  };
+
+  const handleGenerateAllAudio = async () => {
+    try {
+      setStoryboardStatus({ loading: true, text: 'Generating audio for all scenes...' });
+      let successCount = 0;
+      for (const scene of scenes) {
+        if (scene.audio_status !== 'ready') {
+          try {
+            updateSceneInState(scene.scene_id, { audio_status: 'generating' });
+            await axios.post(`${API_URL}/scenes/${scene.scene_id}/generate-audio?project_id=${currentDocId}`);
+            updateSceneInState(scene.scene_id, { audio_status: 'ready' });
+            successCount++;
+          } catch (err) {
+            updateSceneInState(scene.scene_id, { audio_status: 'error' });
+          }
+        }
+      }
+      setStoryboardStatus({ loading: false, text: '' });
+      toast.success(`Generated audio for ${successCount} scenes!`);
+    } catch (err) {
+      toast.error(`Bulk audio generation failed: ${err.message}`);
+      setStoryboardStatus({ loading: false, text: '' });
+    }
+  };
+
+  const handleGenerateAllImages = async () => {
+    try {
+      setStoryboardStatus({ loading: true, text: 'Generating images for all scenes...' });
+      let successCount = 0;
+      for (const scene of scenes) {
+        if (scene.image_status !== 'ready') {
+          try {
+            updateSceneInState(scene.scene_id, { image_status: 'generating' });
+            await axios.post(`${API_URL}/scenes/${scene.scene_id}/generate-image?project_id=${currentDocId}`, {
+              image_style: 'cinematic_educational',
+              custom_prompt: scene.visual_prompt
+            });
+            updateSceneInState(scene.scene_id, { image_status: 'ready' });
+            successCount++;
+          } catch (err) {
+            updateSceneInState(scene.scene_id, { image_status: 'error' });
+          }
+        }
+      }
+      setStoryboardStatus({ loading: false, text: '' });
+      toast.success(`Generated images for ${successCount} scenes!`);
+    } catch (err) {
+      toast.error(`Bulk image generation failed: ${err.message}`);
+      setStoryboardStatus({ loading: false, text: '' });
+    }
+  };
+
+  const handleRenderAllClips = async () => {
+    try {
+      setStoryboardStatus({ loading: true, text: 'Rendering clips for all scenes...' });
+      let successCount = 0;
+      for (const scene of scenes) {
+        if (scene.audio_status === 'ready' && scene.image_status === 'ready') {
+          try {
+            updateSceneInState(scene.scene_id, { clip_status: 'generating' });
+            await axios.post(`${API_URL}/scenes/${scene.scene_id}/generate-clip?project_id=${currentDocId}`);
+            updateSceneInState(scene.scene_id, { clip_status: 'ready' });
+            successCount++;
+          } catch (err) {
+            updateSceneInState(scene.scene_id, { clip_status: 'error' });
+          }
+        }
+      }
+      setShowFastRebuild(true);
+      setStoryboardStatus({ loading: false, text: '' });
+      toast.success(`Rendered ${successCount} clips!`);
+    } catch (err) {
+      toast.error(`Bulk clip rendering failed: ${err.message}`);
+      setStoryboardStatus({ loading: false, text: '' });
+    }
+  };
+
+  const handleAssembleAndRender = async () => {
+    try {
+      // First render all clips
+      await handleRenderAllClips();
+      // Then render final video
+      await handleRenderFinal();
+    } catch (err) {
+      toast.error(`Assemble and render failed: ${err.message}`);
     }
   };
 
@@ -472,8 +573,8 @@ export default function RAGVideoGenerator() {
                   className="input-neu"
                   min="1"
                   max="30"
-                  value={formData.duration_minutes}
-                  onChange={(e) => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) })}
+                  value={formData.duration_minutes || ''}
+                  onChange={(e) => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) || 1 })}
                 />
               </div>
               
@@ -576,6 +677,10 @@ export default function RAGVideoGenerator() {
               onGenerateAudio={handleGenerateAudio}
               onGenerateImage={handleGenerateImage}
               onGenerateClip={handleGenerateClip}
+              onGenerateAllAudio={handleGenerateAllAudio}
+              onGenerateAllImages={handleGenerateAllImages}
+              onRenderAllClips={handleRenderAllClips}
+              onAssembleAndRender={handleAssembleAndRender}
               setFinalVideo={setFinalVideo}
             />
           </>
@@ -588,12 +693,23 @@ export default function RAGVideoGenerator() {
 }
 
 // ── Storyboard Section Component ──────────────────────────────────────
-function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo, showFastRebuild, onGenerateStoryboard, onAssembleClips, onRenderFinal, onFastRebuild, onDownloadVideo, onSaveNarration, onSavePrompt, onAnalyzeVisual, onGenerateAudio, onGenerateImage, onGenerateClip, setFinalVideo }) {
+function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo, showFastRebuild, onGenerateStoryboard, onAssembleClips, onRenderFinal, onFastRebuild, onDownloadVideo, onSaveNarration, onSavePrompt, onAnalyzeVisual, onGenerateAudio, onGenerateImage, onGenerateClip, onGenerateAllAudio, onGenerateAllImages, onRenderAllClips, onAssembleAndRender, setFinalVideo }) {
   const [selectedSceneIndex, setSelectedSceneIndex] = useState(0);
   const [activeTab, setActiveTab] = useState('script');
   const [editedNarration, setEditedNarration] = useState('');
   const [editedPrompt, setEditedPrompt] = useState('');
   const [audioDuration, setAudioDuration] = useState(null);
+
+  const selectedScene = scenes[selectedSceneIndex] || null;
+
+  // Update edited values when scene changes - ALWAYS call hooks
+  useEffect(() => {
+    if (selectedScene) {
+      setEditedNarration(selectedScene.narration_text || '');
+      setEditedPrompt(selectedScene.visual_prompt || '');
+      setAudioDuration(null); // Reset audio duration
+    }
+  }, [selectedScene]);
 
   if (scenes.length === 0) {
     return (
@@ -602,7 +718,7 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
           <h2 className="text-2xl font-display font-bold">Storyboard</h2>
           <button 
             onClick={onGenerateStoryboard}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--gold-primary)] text-black rounded-lg hover:opacity-90 transition-all font-semibold text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:opacity-90 transition-all font-semibold text-sm shadow-lg hover:shadow-indigo-500/50"
           >
             <Wand2 className="w-4 h-4" />
             Generate Storyboard
@@ -619,16 +735,9 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
     );
   }
 
-  const selectedScene = scenes[selectedSceneIndex];
-
-  // Update edited values when scene changes
-  useEffect(() => {
-    if (selectedScene) {
-      setEditedNarration(selectedScene.narration_text || '');
-      setEditedPrompt(selectedScene.visual_prompt || '');
-      setAudioDuration(null); // Reset audio duration
-    }
-  }, [selectedScene]);
+  if (!selectedScene) {
+    return null;
+  }
 
   // Handle audio duration
   const handleAudioLoad = (e) => {
@@ -647,7 +756,7 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
               Ready
             </span>
             <span className="text-[var(--text-muted)]">🎬 {scenes.length} Scenes</span>
-            <span className="text-[var(--text-muted)]">⏱ {scenes.reduce((acc, s) => acc + (s.estimated_duration || 0), 0)}s</span>
+            <span className="text-[var(--text-muted)]">⏱ {scenes.reduce((acc, s) => acc + (Number(s.estimated_duration) || 0), 0).toFixed(0)}s</span>
           </div>
         </div>
         <div className="flex gap-2">
@@ -674,17 +783,93 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
             <button
               key={scene.scene_id}
               onClick={() => setSelectedSceneIndex(idx)}
-              className={`px-4 py-3 rounded-lg border-2 transition-all min-w-[100px] ${
+              className={`px-4 py-3 rounded-lg border-2 transition-all min-w-[100px] relative ${
                 selectedSceneIndex === idx
                   ? 'border-[var(--gold-primary)] bg-[var(--gold-subtle)]'
                   : 'border-[var(--border-default)] hover:border-[var(--gold-primary)]/50'
-              }`}
+              } ${scene.clip_status === 'outdated' ? 'ring-2 ring-orange-500/50' : ''}`}
             >
+              {scene.clip_status === 'outdated' && (
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse" title="Scene needs update" />
+              )}
               <div className="text-sm font-semibold">Scene {idx + 1}</div>
+              <div className="flex gap-1 mt-1 justify-center">
+                {scene.audio_status === 'ready' && <span className="text-xs">🎵</span>}
+                {scene.image_status === 'ready' && <span className="text-xs">🖼</span>}
+                {scene.clip_status === 'ready' && <span className="text-xs">✓</span>}
+                {scene.clip_status === 'outdated' && <span className="text-xs text-orange-400">⚠</span>}
+              </div>
             </button>
           ))}
         </div>
       </div>
+
+      {/* Bulk Actions */}
+      <div className="mb-6 p-4 bg-[var(--bg-elevated)] rounded-xl border border-[var(--border-default)]">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-4 h-4 text-[var(--primary)]" />
+          <h3 className="text-sm font-semibold">Bulk Actions</h3>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={onGenerateAllAudio}
+            disabled={storyboardStatus.loading}
+            className="flex items-center gap-2 px-4 py-2 bg-green-500/20 text-green-400 border border-green-500/40 rounded-lg hover:opacity-90 transition-all font-semibold text-sm disabled:opacity-50"
+          >
+            <Play className="w-4 h-4" />
+            Generate All Audio
+          </button>
+          <button
+            onClick={onGenerateAllImages}
+            disabled={storyboardStatus.loading}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 text-purple-400 border border-purple-500/40 rounded-lg hover:opacity-90 transition-all font-semibold text-sm disabled:opacity-50"
+          >
+            <Eye className="w-4 h-4" />
+            Generate All Images
+          </button>
+          <button
+            onClick={onRenderAllClips}
+            disabled={storyboardStatus.loading}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/40 rounded-lg hover:opacity-90 transition-all font-semibold text-sm disabled:opacity-50"
+          >
+            <Film className="w-4 h-4" />
+            Render All Clips
+          </button>
+          <button
+            onClick={onAssembleAndRender}
+            disabled={storyboardStatus.loading}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:opacity-90 transition-all font-semibold text-sm disabled:opacity-50 shadow-lg"
+          >
+            <Sparkles className="w-4 h-4" />
+            Assemble & Render Final
+          </button>
+        </div>
+        {storyboardStatus.loading && (
+          <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm text-blue-400">{storyboardStatus.text}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Info Banner for Editing After Video Generation */}
+      {finalVideo && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/30 rounded-xl">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-indigo-400 mb-1">Edit & Update Video</h4>
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                To update a scene: Select the scene → Click regenerate button (🔄) next to Audio/Image → Click "Render Clip" → Click "Update Video" to rebuild the final video with your changes.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scene Content */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -695,7 +880,7 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
           </div>
           <div className="bg-[var(--bg-elevated)] p-4 rounded-b-xl">
             {/* Image Preview */}
-            <div className="aspect-video bg-black rounded-lg mb-4 flex items-center justify-center overflow-hidden">
+            <div className="aspect-video bg-black rounded-lg mb-4 flex items-center justify-center overflow-hidden relative group">
               {selectedScene.clip_status === 'ready' ? (
                 <video
                   src={`${API_URL}/assets/${currentDocId}/clips/${selectedScene.scene_id}.mp4?t=${Date.now()}`}
@@ -703,11 +888,25 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
                   className="w-full h-full object-contain"
                 />
               ) : selectedScene.image_status === 'ready' ? (
-                <img
-                  src={`${API_URL}/assets/${currentDocId}/images/${selectedScene.scene_id}.jpg?t=${Date.now()}`}
-                  alt={`Scene ${selectedSceneIndex + 1}`}
-                  className="w-full h-full object-contain"
-                />
+                <>
+                  <img
+                    src={`${API_URL}/assets/${currentDocId}/images/${selectedScene.scene_id}.jpg?t=${Date.now()}`}
+                    alt={`Scene ${selectedSceneIndex + 1}`}
+                    className="w-full h-full object-contain"
+                  />
+                  {/* Quick Regenerate Overlay */}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => onGenerateImage(selectedScene.scene_id, 'cinematic_educational', selectedScene.visual_prompt)}
+                      disabled={selectedScene.image_status === 'generating'}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all font-semibold text-sm disabled:opacity-50"
+                      title="Regenerate this image"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Regenerate Image
+                    </button>
+                  </div>
+                </>
               ) : (
                 <div className="text-center p-6">
                   <Film className="w-12 h-12 mx-auto mb-2 text-[var(--text-muted)]" />
@@ -976,7 +1175,7 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
                     </div>
                     <div className="p-3 bg-[var(--bg-card)] rounded-lg border border-[var(--border-default)]">
                       <p className="text-sm">
-                        Estimated: {selectedScene.estimated_duration || 0}s
+                        Estimated: {Number(selectedScene.estimated_duration) || 0}s
                         {audioDuration && ` | Actual: ${audioDuration.toFixed(1)}s`}
                       </p>
                     </div>
@@ -1046,30 +1245,57 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
 
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2 pt-4 border-t border-[var(--border-default)]">
-                <button
-                  onClick={() => onGenerateAudio(selectedScene.scene_id)}
-                  disabled={selectedScene.audio_status === 'generating'}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                    selectedScene.audio_status === 'ready' 
-                      ? 'bg-green-500/20 text-green-400 border border-green-500/40' 
-                      : 'bg-[var(--gold-primary)] text-black hover:opacity-90'
-                  } disabled:opacity-50`}
-                >
-                  {selectedScene.audio_status === 'generating' ? 'Generating...' : selectedScene.audio_status === 'ready' ? '✓ Audio' : '🎵 Generate Audio'}
-                </button>
+                {/* Audio Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onGenerateAudio(selectedScene.scene_id)}
+                    disabled={selectedScene.audio_status === 'generating'}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+                      selectedScene.audio_status === 'ready' 
+                        ? 'bg-green-500/20 text-green-400 border border-green-500/40' 
+                        : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:opacity-90'
+                    } disabled:opacity-50`}
+                  >
+                    {selectedScene.audio_status === 'generating' ? 'Generating...' : selectedScene.audio_status === 'ready' ? '✓ Audio' : '🎵 Generate Audio'}
+                  </button>
+                  {selectedScene.audio_status === 'ready' && (
+                    <button
+                      onClick={() => onGenerateAudio(selectedScene.scene_id)}
+                      disabled={selectedScene.audio_status === 'generating'}
+                      className="flex items-center gap-2 px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/30 rounded-lg hover:bg-green-500/20 transition-all font-semibold text-sm disabled:opacity-50"
+                      title="Regenerate Audio"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
 
-                <button
-                  onClick={() => onGenerateImage(selectedScene.scene_id, 'cinematic_educational', selectedScene.visual_prompt)}
-                  disabled={selectedScene.image_status === 'generating'}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                    selectedScene.image_status === 'ready' 
-                      ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40' 
-                      : 'bg-[var(--gold-primary)] text-black hover:opacity-90'
-                  } disabled:opacity-50`}
-                >
-                  {selectedScene.image_status === 'generating' ? 'Generating...' : selectedScene.image_status === 'ready' ? '✓ Image' : '🖼 Generate Image'}
-                </button>
+                {/* Image Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onGenerateImage(selectedScene.scene_id, 'cinematic_educational', selectedScene.visual_prompt)}
+                    disabled={selectedScene.image_status === 'generating'}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+                      selectedScene.image_status === 'ready' 
+                        ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40' 
+                        : 'bg-gradient-to-r from-purple-500 to-pink-600 text-white hover:opacity-90'
+                    } disabled:opacity-50`}
+                  >
+                    {selectedScene.image_status === 'generating' ? 'Generating...' : selectedScene.image_status === 'ready' ? '✓ Image' : '🖼 Generate Image'}
+                  </button>
+                  {selectedScene.image_status === 'ready' && (
+                    <button
+                      onClick={() => onGenerateImage(selectedScene.scene_id, 'cinematic_educational', selectedScene.visual_prompt)}
+                      disabled={selectedScene.image_status === 'generating'}
+                      className="flex items-center gap-2 px-3 py-2 bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded-lg hover:bg-purple-500/20 transition-all font-semibold text-sm disabled:opacity-50"
+                      title="Regenerate Image"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
 
+                {/* Clip Button */}
                 {(selectedScene.image_status === 'ready' && selectedScene.audio_status === 'ready') && (
                   <button
                     onClick={() => onGenerateClip(selectedScene.scene_id)}
@@ -1077,10 +1303,30 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
                       selectedScene.clip_status === 'ready' 
                         ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' 
-                        : 'bg-gradient-to-r from-[var(--gold-primary)] to-purple-600 text-black hover:opacity-90'
+                        : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:opacity-90 shadow-lg'
                     } disabled:opacity-50`}
                   >
                     {selectedScene.clip_status === 'generating' ? 'Rendering...' : selectedScene.clip_status === 'ready' ? '✓ Clip' : '🎬 Render Clip'}
+                  </button>
+                )}
+
+                {/* Update Video Button - Shows when clip is ready and final video exists */}
+                {selectedScene.clip_status === 'ready' && finalVideo && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await onFastRebuild();
+                        toast.success('Video updated with new scene!');
+                      } catch (err) {
+                        toast.error('Failed to update video');
+                      }
+                    }}
+                    disabled={storyboardStatus.loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-lg hover:opacity-90 transition-all font-semibold text-sm disabled:opacity-50 shadow-lg"
+                    title="Update final video with this scene's changes"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Update Video
                   </button>
                 )}
               </div>
@@ -1137,6 +1383,19 @@ function StoryboardSection({ scenes, currentDocId, storyboardStatus, finalVideo,
             >
               <RefreshCw className="w-4 h-4" />
               Refresh Preview
+            </button>
+            <button 
+              onClick={() => {
+                // Scroll to scene selector
+                const sceneSelector = document.querySelector('.overflow-x-auto');
+                if (sceneSelector) {
+                  sceneSelector.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 text-purple-400 border border-purple-500/40 rounded-lg hover:opacity-90 transition-all font-semibold"
+            >
+              <Wand2 className="w-4 h-4" />
+              Edit Scenes
             </button>
           </div>
         </div>
